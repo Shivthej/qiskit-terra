@@ -16,7 +16,9 @@ import unittest
 from unittest.util import safe_repr
 from qiskit import __path__ as qiskit_path
 from qiskit.wrapper.defaultqiskitprovider import DefaultQISKitProvider
-
+import mock
+import requests
+saveServerResponses = True
 
 class Path(Enum):
     """Helper with paths commonly used during the tests."""
@@ -239,10 +241,6 @@ def requires_qe_access(func):
 
     @functools.wraps(func)
     def _(*args, **kwargs):
-        # pylint: disable=invalid-name
-        if SKIP_ONLINE_TESTS:
-            raise unittest.SkipTest('Skipping online tests')
-
         # Try to read the variables from Qconfig.
         try:
             import Qconfig
@@ -268,10 +266,51 @@ def requires_qe_access(func):
         kwargs['hub'] = QE_HUB
         kwargs['group'] = QE_GROUP
         kwargs['project'] = QE_PROJECT
+        if saveServerResponses:
+            return save4moking(func)(*args, **kwargs)
         return func(*args, **kwargs)
 
     return _
 
+def post_wrapper(original_post, test_name):
+    @functools.wraps(original_post)
+    def _(*args, **kwargs):
+        response = original_post(*args, **kwargs)
+        print(test_name)
+        return response
+    return _
+
+def save4moking(func):
+    @functools.wraps(func)
+    @mock.patch('requests.post',
+                side_effect=post_wrapper(requests.post, func.__module__+'-'+func.__qualname__))
+    def _(test, post, **kwargs):
+        return func(test, **kwargs)
+    return _
+
+def mock_qe_access(func):
+    """
+    Decorator that mocks the use the online API:
+        * determines if the API should be mocked. If it should not be mocked, returns func
+        decorated with requires_qe_access.
+    Args:
+        func (callable): test function to be decorated.
+
+    Returns:
+        callable: the decorated function.
+    """
+    if DO_TESTS_ONLINE:
+        return requires_qe_access(func)
+
+    def _(*args, **kwargs):
+        kwargs['QE_TOKEN'] = func.__qualname__
+        kwargs['QE_URL'] = "http://127.0.0.1:5000"
+        kwargs['hub'] = None
+        kwargs['group'] = None
+        kwargs['project'] = None
+        return func((), **kwargs)
+
+    return _
 
 def _is_ci_fork_pull_request():
     """
@@ -293,5 +332,5 @@ def _is_ci_fork_pull_request():
     return False
 
 
-SKIP_ONLINE_TESTS = os.getenv('SKIP_ONLINE_TESTS', _is_ci_fork_pull_request())
+DO_TESTS_ONLINE = os.getenv('DO_TESTS_ONLINE', False) is not False
 SKIP_SLOW_TESTS = os.getenv('SKIP_SLOW_TESTS', True) not in ['false', 'False', '-1']

@@ -15,8 +15,7 @@ from qiskit import transpiler
 from qiskit import Result
 from qiskit.wrapper import register, available_backends, get_backend, execute, least_busy
 from qiskit._qiskiterror import QISKitError
-from .common import requires_qe_access, QiskitTestCase
-
+from .common import requires_qe_access, QiskitTestCase, mock_qe_access
 
 class FakeBackEnd(object):
     """A fake backend.
@@ -191,7 +190,7 @@ class TestCompiler(QiskitTestCase):
         # FIXME should test against the qobj when defined
         self.assertEqual(len(qobj), 3)
 
-    @requires_qe_access
+    @mock_qe_access
     def test_compile_run_remote(self, QE_TOKEN, QE_URL, hub=None, group=None, project=None):
         """Test Compiler and run remote.
 
